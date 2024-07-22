@@ -1,6 +1,7 @@
-tensorflow
+tensorflow==2.17.0
 keras
 pandas
 matplotlib
 seaborn
 keras-tuner
+tf-keras~=2.16

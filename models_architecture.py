@@ -1,59 +1,204 @@
-from typing import Union
-from types import MethodType
-
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.keras import layers, models
-from tensorflow.python.keras.layers import Input, Dense, Dropout, Flatten
-from tensorflow.python.keras.layers import LeakyReLU, ReLU, ELU
 
-# 난수 고정 
-tf.random.set_seed(2024)
-np.random.seed(2024)
+try:
+    from keras_tuner import RandomSearch, HyperParameters
+    from tensorflow.keras import models, regularizers
+    from tensorflow.keras.layers import Input, Dense, Dropout, Flatten
+    from tensorflow.keras.layers import LeakyReLU, ReLU, ELU
+    from tensorflow.keras.optimizers import Adam
+except ImportError:
+    from tensorflow.python.keras import models, regularizers
+    from tensorflow.python.keras.layers import Input, Dense, Dropout, Flatten
+    from tensorflow.python.keras.layers import LeakyReLU, ReLU, ELU
+    from tensorflow.python.keras.optimizer_v2.adam import Adam
+    from keras_tuner import RandomSearch, HyperParameters
 
-activate_leaky_relu = LeakyReLU()
-input_shape = Input(shape=(None,))  # 인풋 형태 수정
 
-# 범용 활성화 함수 
-def activation_optional(
-    input_tensor: tf.Tensor, 
-    alpha: float = 0.3,
-    leaky_relu: bool = False, 
-    relu: bool = False
-) -> Union[tf.Tensor, MethodType]:
-    """활성화 함수 선택 BatchNormalization -> LeakyReLU or ReLU or ELU"""
-    norm: tf.Tensor = Dropout(0.25)(input_tensor)
-    
-    # LeakyReLU 혹은 alpha 값 활성화 시 실행 
-    if leaky_relu or alpha:
-        activation: tf.Tensor = LeakyReLU(alpha=alpha)(norm)
-    else:
-        # 그렇지 않으면 둘중 하나 실행 
-        if relu:
-            activation = ReLU()(norm)
+class RegressionModelBuilder:
+    def __init__(self, hp: HyperParameters, input_dim: int) -> None:
+        """
+        RegressionModelBuilder 는 HyperParmeters instance 로 초기화 한다
+
+        Args:
+            hp (HyperParameters): keres_tuner 로 HyperParameter 객체 추가
+        """
+        self.hp = hp
+        self.input_dim = input_dim
+
+    def activation_optional(self, input_tensor: tf.Tensor) -> tf.Tensor:
+        """
+        DropOut and activate function 를 HyperParameter 조정
+
+        Args:
+            input_tensor (tf.Tensor): Dropout 과 HyperParameter 적용 입력 Tensor
+
+        Returns:
+            tf.Tensor: Dropout과 선택된 활성화 함수가 적용된 텐서
+        """
+        dropout_rate: float = self.hp.Float(
+            "dropout_rate", min_value=0.1, max_value=0.5, sampling="linear"
+        )
+        norm: tf.Tensor = Dropout(dropout_rate)(input_tensor)
+
+        # 활성화 함수 선택
+        if self.hp.Boolean("use_leaky_relu"):
+            alpha: float = self.hp.Float(
+                "leaky_relu_alpha", min_value=0.01, max_value=0.3, sampling="LOG"
+            )
+            activation: tf.Tensor = LeakyReLU(alpha=alpha)(norm)
+        elif self.hp.Boolean("use_relu"):
+            activation: tf.Tensor = ReLU()(norm)
         else:
-            activation = ELU()(norm)
-    
-    return activation
+            activation: tf.Tensor = ELU()(norm)
 
-def dense_arch1() -> tf.Tensor:
-    """Dense 범용 아키텍처"""
-    units: list[int] = [10, 15, 20]  # 유닛 수 리스트
-    previous_layer: tf.Tensor = input_shape  # 첫 번째 레이어의 입력 모양
+        return activation
 
-    for unit in units:  # 각 유닛 수에 대해 반복문 실행
-        previous_layer = Dense(units=unit, activation=activate_leaky_relu)(previous_layer)
+    def dense_architecture(self, input_tensor: tf.Tensor) -> tf.Tensor:
+        """
+        layer 수와 유닛 수를 Hyperparameter 설정하여 Dense Architecture 구축
 
-    bn: tf.Tensor = activation_optional(previous_layer)  # 마지막 레이어에 대해 선택적으로 활성화 함수 적용
-    active_dense = Dense(units=unit, activation=activate_leaky_relu)(bn)
-    flatten_later = Flatten()(active_dense)
-    return flatten_later
+        Returns:
+            tf.Tensor: Dense Architecture Ouput Tensor
 
-def data_concatenate() -> models.Model:
-    """앙상블 아키텍처 설계"""
-    dense_output: tf.Tensor = dense_arch1()
-    finally_dense: tf.Tensor = Dense(10, activation='softmax')(dense_output)
-    k_model: models.Model = models.Model(inputs=input_shape, outputs=finally_dense)
-    k_model.summary()
-    return k_model
+        """
+        units: list[int] = [
+            self.hp.Int(f"units_{i}", min_value=10, max_value=100, step=10)
+            for i in range(1, 5)
+        ]
 
+        previous_layer: tf.Tensor = input_tensor
+
+        for unit in units:
+            # L1과 L2 규제를 함께 적용
+            regularizer = regularizers.L1L2(
+                l1=self.hp.Float("l1", min_value=1e-5, max_value=0.1, sampling="log"),
+                l2=self.hp.Float("l2", min_value=1e-5, max_value=0.1, sampling="log"),
+            )
+            previous_layer = Dense(
+                units=unit, activation=None, kernel_regularizer=regularizer
+            )(previous_layer)
+            previous_layer = self.activation_optional(previous_layer)
+
+        bn: tf.Tensor = self.activation_optional(previous_layer)
+        final_dense_units: int = self.hp.Int(
+            "final_dense_units", min_value=10, max_value=100, step=10
+        )
+        active_dense: tf.Tensor = Dense(units=final_dense_units, activation=None)(bn)
+        active_dense = self.activation_optional(active_dense)
+        flatten_later: tf.Tensor = Flatten()(active_dense)
+        return flatten_later
+
+    def build_model(self) -> models.Model:
+        """
+        회귀 모델을 구축하고 컴파일
+
+        Returns:
+            models.Model: 주어진 HyperParameter 구축된 Keras 모델입니다
+        """
+        # 입력 레이어 정의
+        input_tensor: tf.Tensor = Input(shape=(self.input_dim,))
+
+        # Dense 아키텍처 구축
+        dense_output: tf.Tensor = self.dense_architecture(input_tensor)
+
+        # 최종 출력 레이어
+        finally_dense: tf.Tensor = Dense(1, activation=None)(
+            dense_output
+        )  # 회귀 문제에서는 출력층 활성화 함수 없음
+
+        # 모델 정의
+        model: models.Model = models.Model(inputs=input_tensor, outputs=finally_dense)
+
+        model.compile(
+            optimizer=Adam(
+                self.hp.Float(
+                    "learning_rate", min_value=1e-4, max_value=1e-2, sampling="log"
+                )
+            ),
+            loss="mean_squared_error",  # 회귀 문제의 손실 함수
+            metrics=["mean_squared_error"],
+        )
+
+        return model
+
+
+class RegressionModelTuner:
+    def __init__(self, input_dim: int) -> None:
+        """
+        RandomSerch를 사용해서 RegressionModelTuner 초기화
+
+        Args:
+            None
+        """
+        self.input_dim = input_dim
+        self.tuner: RandomSearch = RandomSearch(
+            self.build_model,
+            objective="val_loss",
+            max_trials=20,
+            executions_per_trial=3,
+            directory="mydir",
+            project_name="regression_tuning",
+        )
+
+    def build_model(self, hp: HyperParameters) -> models.Model:
+        """
+        하이퍼파라미터를 사용하여 모델을 구축합니다.
+
+        Args:
+            hp (HyperParameters): Keras Tuner의 하이퍼파라미터 객체입니다.
+
+        Returns:
+            models.Model: 주어진 하이퍼파라미터로 구축된 Keras 모델입니다.
+        """
+        builder: RegressionModelBuilder = RegressionModelBuilder(hp, self.input_dim)
+        return builder.build_model()
+
+    def tune(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_val: np.ndarray,
+        y_val: np.ndarray,
+    ) -> None:
+        """
+        회귀 모델의 하이퍼파라미터 튜닝을 수행합니다.
+
+        Args:
+            X_train (np.ndarray): 학습용 입력 데이터입니다.
+            y_train (np.ndarray): 학습용 타겟 데이터입니다.
+            X_val (np.ndarray): 검증용 입력 데이터입니다.
+            y_val (np.ndarray): 검증용 타겟 데이터입니다.
+
+        Returns:
+            None
+        """
+        self.tuner.search(X_train, y_train, epochs=5, validation_data=(X_val, y_val))
+
+        best_hps: HyperParameters = self.tuner.get_best_hyperparameters(num_trials=1)[0]
+        print("최적의 L1 규제 값:", best_hps.get("l1"))
+        print("최적의 L2 규제 값:", best_hps.get("l2"))
+        print("최적의 학습률:", best_hps.get("learning_rate"))
+        print("최적의 Dropout 비율:", best_hps.get("dropout_rate"))
+        print("최적의 레이어 수:", best_hps.get("num_layers"))
+        print("최적의 최종 Dense 유닛 수:", best_hps.get("final_dense_units"))
+
+        best_model: models.Model = self.tuner.hypermodel.build(best_hps)
+        best_model.fit(
+            X_train, y_train, epochs=5, validation_data=(X_val, y_val), verbose=1
+        )
+
+
+# 데이터 생성 (예시로 랜덤 데이터 사용)
+X_train: np.ndarray = np.random.rand(100, 10)
+y_train: np.ndarray = np.random.rand(
+    100,
+)  # 회귀 문제에 맞게 랜덤 실수 값 생성
+X_val: np.ndarray = np.random.rand(20, 10)
+y_val: np.ndarray = np.random.rand(
+    20,
+)
+
+# 모델 튜닝 및 학습
+tuner: RegressionModelTuner = RegressionModelTuner(input_dim=X_train.shape[1])
+tuner.tune(X_train, y_train, X_val, y_val)
