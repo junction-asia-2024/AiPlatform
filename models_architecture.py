@@ -1,18 +1,11 @@
 import numpy as np
 import tensorflow as tf
 
-try:
-    from keras_tuner import RandomSearch, HyperParameters
-    from tensorflow.keras import models, regularizers
-    from tensorflow.keras.layers import Input, Dense, Dropout, Flatten
-    from tensorflow.keras.layers import LeakyReLU, ReLU, ELU
-    from tensorflow.keras.optimizers import Adam
-except ImportError:
-    from tensorflow.python.keras import models, regularizers
-    from tensorflow.python.keras.layers import Input, Dense, Dropout, Flatten
-    from tensorflow.python.keras.layers import LeakyReLU, ReLU, ELU
-    from tensorflow.python.keras.optimizer_v2.adam import Adam
-    from keras_tuner import RandomSearch, HyperParameters
+from keras_tuner import RandomSearch, HyperParameters
+from keras import models, regularizers
+from keras.src.layers import Input, Dense, Dropout, Flatten
+from keras.src.layers import LeakyReLU, ReLU, ELU
+from keras.src.optimizers import Adam
 
 
 class RegressionModelBuilder:
@@ -94,7 +87,7 @@ class RegressionModelBuilder:
         회귀 모델을 구축하고 컴파일
 
         Returns:
-            models.Model: 주어진 HyperParameter 구축된 Keras 모델입니다
+            models.Model: 주어진 HyperParameter 구축된 Keras 모델
         """
         # 입력 레이어 정의
         input_tensor: tf.Tensor = Input(shape=(self.input_dim,))
@@ -103,9 +96,7 @@ class RegressionModelBuilder:
         dense_output: tf.Tensor = self.dense_architecture(input_tensor)
 
         # 최종 출력 레이어
-        finally_dense: tf.Tensor = Dense(1, activation=None)(
-            dense_output
-        )  # 회귀 문제에서는 출력층 활성화 함수 없음
+        finally_dense: tf.Tensor = Dense(1, activation=None)(dense_output)
 
         # 모델 정의
         model: models.Model = models.Model(inputs=input_tensor, outputs=finally_dense)
@@ -146,10 +137,10 @@ class RegressionModelTuner:
         하이퍼파라미터를 사용하여 모델을 구축합니다.
 
         Args:
-            hp (HyperParameters): Keras Tuner의 하이퍼파라미터 객체입니다.
+            hp (HyperParameters): Keras Tuner의 하이퍼파라미터 객체
 
         Returns:
-            models.Model: 주어진 하이퍼파라미터로 구축된 Keras 모델입니다.
+            models.Model: 주어진 하이퍼파라미터로 구축된 Keras 모델
         """
         builder: RegressionModelBuilder = RegressionModelBuilder(hp, self.input_dim)
         return builder.build_model()
@@ -165,10 +156,10 @@ class RegressionModelTuner:
         회귀 모델의 하이퍼파라미터 튜닝을 수행합니다.
 
         Args:
-            X_train (np.ndarray): 학습용 입력 데이터입니다.
-            y_train (np.ndarray): 학습용 타겟 데이터입니다.
-            X_val (np.ndarray): 검증용 입력 데이터입니다.
-            y_val (np.ndarray): 검증용 타겟 데이터입니다.
+            X_train (np.ndarray): 학습용 입력 데이터
+            y_train (np.ndarray): 학습용 타겟 데이터
+            X_val (np.ndarray): 검증용 입력 데이터
+            y_val (np.ndarray): 검증용 타겟 데이터
 
         Returns:
             None
