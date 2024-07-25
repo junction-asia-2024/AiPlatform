@@ -5,7 +5,7 @@ from keras_tuner import RandomSearch, HyperParameters
 from keras import models, regularizers
 from keras.src.layers import Input, Dense, Dropout, Flatten
 from keras.src.layers import LeakyReLU, ReLU, ELU
-from keras.src.optimizers import Adam
+from keras.src.optimizers.adam import Adam
 
 
 class RegressionModelBuilder:
@@ -69,7 +69,7 @@ class RegressionModelBuilder:
                 l2=self.hp.Float("l2", min_value=1e-5, max_value=0.1, sampling="log"),
             )
             previous_layer = Dense(
-                units=unit, activation=None, kernel_regularizer=regularizer
+                units=unit, activation="relu", kernel_regularizer=regularizer
             )(previous_layer)
             previous_layer = self.activation_optional(previous_layer)
 
@@ -77,7 +77,7 @@ class RegressionModelBuilder:
         final_dense_units: int = self.hp.Int(
             "final_dense_units", min_value=10, max_value=100, step=10
         )
-        active_dense: tf.Tensor = Dense(units=final_dense_units, activation=None)(bn)
+        active_dense: tf.Tensor = Dense(units=final_dense_units, activation="relu")(bn)
         active_dense = self.activation_optional(active_dense)
         flatten_later: tf.Tensor = Flatten()(active_dense)
         return flatten_later
@@ -96,7 +96,7 @@ class RegressionModelBuilder:
         dense_output: tf.Tensor = self.dense_architecture(input_tensor)
 
         # 최종 출력 레이어
-        finally_dense: tf.Tensor = Dense(1, activation=None)(dense_output)
+        finally_dense: tf.Tensor = Dense(1, activation="relu")(dense_output)
 
         # 모델 정의
         model: models.Model = models.Model(inputs=input_tensor, outputs=finally_dense)

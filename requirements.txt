@@ -1,7 +1,16 @@
-tensorflow=2.16.1
+tensorflow==2.16.1
 keras
 pandas
 matplotlib
 seaborn
 keras-tuner
 tf-keras~=2.16
+openai
+scikit-learn
+fastapi
+uvicorn
+sqlalchemy
+aiomysql
+databases
+pydantic
+pydantic-settings
