@@ -1,20 +1,8 @@
 version: '3'
 
-
 services:
-  web:
-    build: .
-    ports:
-      - "8000:8000"
-    volumes:
-      - .:/app
-    depends_on:
-      - sql
-    environment:
-      - DATABASE_URL=mysql+pymysql://${DB_USERNAME}:${DB_PASSWORD}@sql/${DB_DATABASE}
-
-  sql:
-    container_name: sql
+  fastapi_sql_ai:
+    container_name: fastapi_sql_ai
     image: mysql:8
     ports:
       - "3307:3306"
@@ -26,18 +14,34 @@ services:
       - MYSQL_AUTH_PLUGIN=caching_sha2_password
       - TZ=Asia/Seoul
     command:
-      # - --default-authentication-plugin=caching_sha2_password
       - --collation-server=utf8mb4_unicode_ci
       - --character-set-server=utf8mb4
       - --lower_case_table_names=1
     healthcheck:
-        test: ['CMD-SHELL', 'sql ping -h 127.0.0.1 -u root --password=$$MYSQL_ROOT_PASSWORD']
-        interval: 10s
-        timeout: 2s
-        retries: 100
-
+      test: ['CMD-SHELL', 'mysqladmin ping -h fastapi_sql_ai -u root --password=$$MYSQL_ROOT_PASSWORD']
+      interval: 10s
+      timeout: 2s
+      retries: 100
     volumes:
       - mysql_data:/var/lib/mysql  # 데이터 볼륨 마운트
+    networks:
+      - fast-network 
+
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      - fastapi_sql_ai
+    restart: always
+    networks:
+      - fast-network 
 
 volumes:
   mysql_data:
+
+
+networks:
+  fast-network:
