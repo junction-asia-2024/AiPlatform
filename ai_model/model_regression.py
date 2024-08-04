@@ -2,11 +2,10 @@ import numpy as np
 import joblib
 import logging
 import asyncio
-
 from typing import Union
+
 from sklearn.datasets import load_diabetes
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.linear_model import LinearRegression
 from sklearn.tree import DecisionTreeRegressor
@@ -14,39 +13,21 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.ensemble import StackingRegressor
 from sklearn.pipeline import Pipeline
 
-
-# 로깅 설정
-log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-
-file_handler = logging.FileHandler("regression_logs.log")
-file_handler.setFormatter(log_formatter)
-file_handler.setLevel(logging.INFO)
-
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(log_formatter)
-console_handler.setLevel(logging.INFO)
-
-logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler])
-
-PredictionType = Union[np.ndarray, tuple[np.ndarray, np.ndarray]]
-MLModelScoreType = dict[str, Union[list[float], str]]
-MseType = Union[float, np.ndarray]
+from ai_typing import (
+    PredictionType,
+    MseType,
+    RegressionTrainedModels,
+    RegressionTrainModel,
+    ModelPerformanceScore,
+    ParameterGrids,
+)
+from model_mixin import AiModelCommonConstructionMixinClass
 
 
-class RegressionEnsemble:
+class RegressionEnsemble(AiModelCommonConstructionMixinClass):
     def __init__(self, X: np.ndarray, y: np.ndarray) -> None:
-        """
-        초기화 함수. 데이터셋을 받아 학습 및 테스트 세트로 나눔.
-
-        Args:
-            X (np.ndarray): 특징 데이터.
-            y (np.ndarray): 타겟 데이터.
-        """
-        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
-        self.scaler = StandardScaler()
-        self.models: dict[str, Pipeline] = {
+        super().__init__(X, y)
+        self.models: RegressionTrainModel = {
             "linear_regression": Pipeline(
                 [("scaler", self.scaler), ("regressor", LinearRegression())]
             ),
@@ -57,18 +38,21 @@ class RegressionEnsemble:
                 [("scaler", self.scaler), ("regressor", KNeighborsRegressor())]
             ),
         }
-        self.param_grids: dict[str, dict[str, list]] = {
+        self.param_grids: ParameterGrids = {
             "decision_tree": {
-                "regressor__max_depth": [None, 10, 20, 30],
-                "regressor__min_samples_split": [2, 5, 10],
+                "regressor__criterion": ["squared_error", "friedman_mse"],
+                "regressor__max_depth": self.max_depth,
+                "regressor__min_samples_split": self.min_sample_split,
             },
             "knn": {
-                "regressor__n_neighbors": [3, 5, 7, 10],
-                "regressor__weights": ["uniform", "distance"],
+                "regressor__n_neighbors": self.n_neighbors,
+                "regressor__weights": self.knn_metric,
+                "regressor__metric": self.knn_distance,
+                # "regressor__metric_params": self.knn_metric_param,
             },
         }
-        self.trained_models: dict[str, Union[Pipeline, StackingRegressor]] = {}
-        self.model_performance: dict[str, dict[str, float]] = {}
+        self.trained_models: RegressionTrainedModels = {}
+        self.model_performance: ModelPerformanceScore = {}
 
     async def train_model(
         self, name: str, model: Pipeline, param_grid: dict[str, list] = None
@@ -181,32 +165,6 @@ class RegressionEnsemble:
         else:
             logging.warning("최적의 모델이 없습니다. 먼저 모델을 학습시키세요.")
             return {"prediction": [], "model": "None"}
-
-
-async def load_and_predict(model_path: str, input_data: np.ndarray) -> MLModelScoreType:
-    """
-    저장된 회귀 모델을 로드하고 예측을 수행하는 함수
-
-    Parameters:
-    - model_path (str): 저장된 모델의 파일 경로
-    - input_data (np.ndarray): 모델에 입력할 데이터. 2D 배열 형태로 제공되어야 함.
-
-    Returns:
-    - result MLModelScoreType: 예측 결과와 모델 정보를 포함한 딕셔너리
-    """
-    # 모델 로드
-    model = joblib.load(model_path)
-
-    # 예측 수행
-    predictions = model.predict(input_data)
-
-    # 결과를 딕셔너리 형태로 반환
-    result = {
-        "prediction": predictions.tolist(),  # NumPy 배열을 리스트로 변환
-        "model": f"{model_path.split('/')[1].split('_')[0]}",  # 모델 유형 (여기서는 예시로 'ensemble'로 설정)
-    }
-
-    return result
 
 
 # --------------------------------------------------------------------------------------------------------------------------------
