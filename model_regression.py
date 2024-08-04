@@ -2,7 +2,6 @@ import numpy as np
 import joblib
 import logging
 import asyncio
-import matplotlib.pyplot as plt
 
 from typing import Union
 from sklearn.datasets import load_diabetes
@@ -186,7 +185,7 @@ class RegressionEnsemble:
 
 async def load_and_predict(model_path: str, input_data: np.ndarray) -> MLModelScoreType:
     """
-    저장된 회귀 모델을 로드하고 예측을 수행하는 함수입니다.
+    저장된 회귀 모델을 로드하고 예측을 수행하는 함수
 
     Parameters:
     - model_path (str): 저장된 모델의 파일 경로
