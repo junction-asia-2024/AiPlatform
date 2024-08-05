@@ -1,32 +1,39 @@
 import numpy as np
-import joblib
 import logging
 import asyncio
-from typing import Union
 
 from sklearn.datasets import load_diabetes
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.linear_model import LinearRegression
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.ensemble import StackingRegressor
 from sklearn.pipeline import Pipeline
+from sklearn.metrics import mean_squared_error
 
 from ai_typing import (
-    PredictionType,
-    MseType,
+    MLModelScoreType,
     RegressionTrainedModels,
     RegressionTrainModel,
     ModelPerformanceScore,
     ParameterGrids,
 )
-from model_mixin import AiModelCommonConstructionMixinClass
+from model_mixin import AiModelCommonConstructionMixinClass, setup_logging
+
+setup_logging("log/regression.log")
 
 
 class RegressionEnsemble(AiModelCommonConstructionMixinClass):
     def __init__(self, X: np.ndarray, y: np.ndarray) -> None:
-        super().__init__(X, y)
+        """
+        초기화 함수. 데이터셋을 받아 학습 및 테스트 세트로 나누고, 회귀 모델 및 앙상블 모델을 설정함.
+
+        Args:
+            X (np.ndarray): 특징 데이터.
+            y (np.ndarray): 타겟 데이터.
+        """
+        super().__init__(X, y, type_="regression")
+
+        # 최적의 파라미터 값을 찾기 위해서 Pipeline 설계 입니다
         self.models: RegressionTrainModel = {
             "linear_regression": Pipeline(
                 [("scaler", self.scaler), ("regressor", LinearRegression())]
@@ -38,6 +45,8 @@ class RegressionEnsemble(AiModelCommonConstructionMixinClass):
                 [("scaler", self.scaler), ("regressor", KNeighborsRegressor())]
             ),
         }
+
+        # 파라미터 설정
         self.param_grids: ParameterGrids = {
             "decision_tree": {
                 "regressor__criterion": ["squared_error", "friedman_mse"],
@@ -48,106 +57,44 @@ class RegressionEnsemble(AiModelCommonConstructionMixinClass):
                 "regressor__n_neighbors": self.n_neighbors,
                 "regressor__weights": self.knn_metric,
                 "regressor__metric": self.knn_distance,
-                # "regressor__metric_params": self.knn_metric_param,
             },
         }
+
+        # 앙상블 모델 설정
+        self.stacking_model = StackingRegressor(
+            estimators=[
+                ("lr", self.models["linear_regression"]),
+                ("dt", self.models["decision_tree"]),
+                ("knn", self.models["knn"]),
+            ],
+            final_estimator=LinearRegression(),
+        )
         self.trained_models: RegressionTrainedModels = {}
         self.model_performance: ModelPerformanceScore = {}
-
-    async def train_model(
-        self, name: str, model: Pipeline, param_grid: dict[str, list] = None
-    ) -> None:
-        """
-        단일 회귀 모델을 비동기로 학습시키고 결과를 로깅하며, 학습된 모델을 저장함.
-
-        Args:
-            name (str): 모델 이름.
-            model (Pipeline): 모델 파이프라인 객체.
-            param_grid (Dict[str, list], optional): 하이퍼파라미터 그리드. 기본값은 None.
-        """
-        if param_grid:
-            grid_search = GridSearchCV(
-                model, param_grid, cv=5, n_jobs=-1, scoring="neg_mean_squared_error"
-            )
-            grid_search.fit(self.X_train, self.y_train)
-            best_model = grid_search.best_estimator_
-            logging.info(
-                f"{name} 모델의 최적 하이퍼파라미터: {grid_search.best_params_}"
-            )
-            model = best_model
-        else:
-            model.fit(self.X_train, self.y_train)
-
-        self.trained_models[name] = model
-        y_pred: PredictionType = model.predict(self.X_test)
-        mse: MseType = mean_squared_error(self.y_test, y_pred)
-        r2 = r2_score(self.y_test, y_pred)
-        self.model_performance[name] = {"mse": mse, "r2": r2}
-        logging.info(f"모델: {name}")
-        logging.info(f"평균 제곱 오차 (MSE): {mse:.2f}")
-        logging.info(f"결정 계수 (R^2): {r2:.2f}")
-        joblib.dump(model, f"saving_model/{name}_regression_model.pkl")
-        logging.info(
-            f"회귀 모델 {name}이(가) {name}_regression_model.pkl로 저장되었습니다."
-        )
 
     async def train_models(self) -> None:
         """
         세 가지 회귀 모델을 비동기로 학습시키고 결과를 로깅하며, 학습된 모델을 저장함.
         """
-        tasks = []
-        for name, model in self.models.items():
-            param_grid = self.param_grids.get(name, None)
-            tasks.append(self.train_model(name, model, param_grid))
+        tasks = [
+            self.train_model(
+                name=name,
+                model=model,
+                scoring="neg_mean_squared_error",
+                param_grid=self.param_grids.get(name, None),
+            )
+            for name, model in self.models.items()
+        ]
         await asyncio.gather(*tasks)
 
-    async def train_ensemble_model(self) -> None:
-        """
-        학습된 회귀 모델을 사용하여 앙상블 회귀 모델을 비동기로 학습하고 결과를 로깅하며, 앙상블 모델을 저장함.
-        """
-        if not self.trained_models:
-            logging.warning("학습된 모델이 없습니다. 먼저 기본 모델을 학습시키세요.")
-            return
-
-        ensemble_model = StackingRegressor(
-            estimators=[
-                (name, model)
-                for name, model in self.trained_models.items()
-                if name != "ensemble"
-            ],
-            final_estimator=LinearRegression(),
-        )
-        ensemble_model.fit(self.X_train, self.y_train)
-        self.trained_models["ensemble"] = ensemble_model
-        y_pred = ensemble_model.predict(self.X_test)
-        mse = mean_squared_error(self.y_test, y_pred)
-        r2 = r2_score(self.y_test, y_pred)
-        self.model_performance["ensemble"] = {"mse": mse, "r2": r2}
-        logging.info("앙상블 회귀 모델")
-        logging.info(f"평균 제곱 오차 (MSE): {mse:.2f}")
-        logging.info(f"결정 계수 (R^2): {r2:.2f}")
-        joblib.dump(ensemble_model, "saving_model/ensemble_regression_model.pkl")
-        logging.info(
-            "앙상블 회귀 모델이 ensemble_regression_model.pkl로 저장되었습니다."
+        # 앙상블 모델 학습
+        await self.train_model(
+            name="stacking",
+            model=self.stacking_model,
+            scoring="neg_mean_squared_error",
         )
 
-    async def get_best_model(self) -> str:
-        """
-        가장 성능이 좋은 모델을 선택하여 그 이름을 반환함.
-
-        Returns:
-            str: 가장 성능이 좋은 모델의 이름.
-        """
-        best_model_name = max(
-            self.model_performance, key=lambda name: self.model_performance[name]["r2"]
-        )
-        best_performance = self.model_performance[best_model_name]
-        logging.info(f"가장 성능이 좋은 모델: {best_model_name}")
-        logging.info(f"평균 제곱 오차 (MSE): {best_performance['mse']:.2f}")
-        logging.info(f"결정 계수 (R^2): {best_performance['r2']:.2f}")
-        return best_model_name
-
-    async def predict(self, X_new: np.ndarray) -> dict[str, Union[np.ndarray, str]]:
+    async def predict(self, X_new: np.ndarray) -> MLModelScoreType:
         """
         새로운 데이터에 대해 비동기로 예측 수행함.
 
@@ -155,34 +102,45 @@ class RegressionEnsemble(AiModelCommonConstructionMixinClass):
             X_new (np.ndarray): 예측할 새로운 데이터.
 
         Returns:
-            Dict[str, Union[np.ndarray, str]]: 예측 결과를 담은 딕셔너리.
+            MLModelScoreType: 예측 결과를 담은 딕셔너리.
         """
-        best_model_name = await self.get_best_model()
-        if best_model_name in self.trained_models:
-            model = self.trained_models[best_model_name]
-            predictions = model.predict(X_new)
-            return {"prediction": predictions.tolist(), "model": best_model_name}
-        else:
-            logging.warning("최적의 모델이 없습니다. 먼저 모델을 학습시키세요.")
+        if not self.best_model:
+            logging.warning("모델이 학습되지 않았습니다. 먼저 모델을 학습해주세요.")
             return {"prediction": [], "model": "None"}
+
+        logging.info(f"가장 베스트 모델은 --> {self.best_model} 입니다")
+        prediction = self.best_model.predict(X_new)
+
+        # 성능 평가 및 로깅
+        y_pred = self.best_model.predict(self.X_test)
+        mse = mean_squared_error(self.y_test, y_pred)
+        r2 = self.best_model.score(self.X_test, self.y_test)
+
+        logging.info(f"모델: {self.best_model}")
+        logging.info(f"평균 제곱 오차 (MSE): {mse:.2f}")
+        logging.info(f"결정 계수 (R^2): {r2:.2f}")
+
+        result: MLModelScoreType = {
+            "prediction": prediction.tolist(),
+            "model": type(self.best_model).__name__,
+        }
+        return result
 
 
 # --------------------------------------------------------------------------------------------------------------------------------
 
+
 # 사용 예시
-# 당뇨병 데이터셋 로드
-from sklearn.datasets import load_diabetes
-
-diabetes = load_diabetes()
-X = diabetes.data
-y = diabetes.target
-
-
-# 비동기 작업 실행
 async def main() -> dict[str, np.ndarray | str]:
+    # 당뇨병 데이터셋 로드
+    diabetes = load_diabetes()
+    X = diabetes.data
+    y = diabetes.target
+
+    # 모델 생성 및 학습
     ensemble = RegressionEnsemble(X, y)
     await ensemble.train_models()
-    await ensemble.train_ensemble_model()
+
     X_new = X[:5]  # 예제로 처음 5개 데이터를 사용
     result = await ensemble.predict(X_new)
 
@@ -191,3 +149,4 @@ async def main() -> dict[str, np.ndarray | str]:
 
 # 비동기 메인 함수 실행
 result = asyncio.run(main())
+print("회귀 모델 예측 결과:", result)

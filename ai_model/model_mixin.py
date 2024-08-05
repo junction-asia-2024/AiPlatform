@@ -5,15 +5,13 @@ import logging
 import joblib
 
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.metrics import mean_squared_error, accuracy_score
 from sklearn.preprocessing import StandardScaler
 
 from ai_typing import (
     MLModelScoreType,
-    ParameterGrids,
-    MseType,
-    PredictionType,
+    ModelPerformanceScore,
     RegressionTrainedModels,
     ClassificationModel,
 )
@@ -81,6 +79,8 @@ class AiModelCommonConstructionMixinClass:
         """
         self.type_ = type_
         self.trained_models: RegressionTrainedModels | ClassificationModel = {}
+        self.best_model = None
+        self.best_score: float = float("inf") if type_ == "regression" else 0.0
 
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
             X, y, test_size=0.2, random_state=42
@@ -128,7 +128,25 @@ class AiModelCommonConstructionMixinClass:
             model.fit(self.X_train, self.y_train)
 
         self.trained_models[name] = model
-        y_pred: PredictionType = model.predict(self.X_test)
-        joblib.dump(model, f"saving_model/{name}_{self.type_}_model.pkl")
+        y_pred = model.predict(self.X_test)
+        if self.type_ == "regression":
+            score: ModelPerformanceScore = mean_squared_error(self.y_test, y_pred)
+        else:
+            score: ModelPerformanceScore = accuracy_score(self.y_test, y_pred)
 
-        return y_pred
+        if (self.type_ == "regression" and score < self.best_score) or (
+            self.type_ == "classification" and score > self.best_score
+        ):
+            self.best_model = model
+            self.best_score = score
+
+        logging.info(f"모델: {name}")
+        if self.type_ == "regression":
+            logging.info(f"평균 제곱 오차 (MSE): {score:.2f}")
+        else:
+            logging.info(f"정확도: {score:.2%}")
+
+        joblib.dump(model, f"saving_model/{self.type_}/{name}_{self.type_}_model.pkl")
+        logging.info(
+            f"{name} 모델이 저장되었습니다: saving_model/{self.type_}/{name}_{self.type_}_model.pkl"
+        )

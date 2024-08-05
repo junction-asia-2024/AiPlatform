@@ -40,6 +40,8 @@ class ModelPerformanceDict(TypedDict):
 
     mse: float
     r2: float
+    acc: float
+    cm: list[str]
 
 
 ModelPerformanceScore: TypeAlias = dict[str, ModelPerformanceDict]
