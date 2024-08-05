@@ -1,6 +1,7 @@
 import numpy as np
 import logging
 import asyncio
+from typing import Coroutine, Any
 
 from sklearn.datasets import load_diabetes
 from sklearn.linear_model import LinearRegression
@@ -10,13 +11,7 @@ from sklearn.ensemble import StackingRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import mean_squared_error
 
-from ai_typing import (
-    MLModelScoreType,
-    RegressionTrainedModels,
-    RegressionTrainModel,
-    ModelPerformanceScore,
-    ParameterGrids,
-)
+from ai_typing import MLModelScoreType, RegressionTrainModel, ParameterGrids, MseType
 from model_mixin import AiModelCommonConstructionMixinClass, setup_logging
 
 setup_logging("log/regression.log")
@@ -69,14 +64,12 @@ class RegressionEnsemble(AiModelCommonConstructionMixinClass):
             ],
             final_estimator=LinearRegression(),
         )
-        self.trained_models: RegressionTrainedModels = {}
-        self.model_performance: ModelPerformanceScore = {}
 
     async def train_models(self) -> None:
         """
         세 가지 회귀 모델을 비동기로 학습시키고 결과를 로깅하며, 학습된 모델을 저장함.
         """
-        tasks = [
+        tasks: list[Coroutine[Any, Pipeline]] = [
             self.train_model(
                 name=name,
                 model=model,
@@ -112,9 +105,9 @@ class RegressionEnsemble(AiModelCommonConstructionMixinClass):
         prediction = self.best_model.predict(X_new)
 
         # 성능 평가 및 로깅
-        y_pred = self.best_model.predict(self.X_test)
-        mse = mean_squared_error(self.y_test, y_pred)
-        r2 = self.best_model.score(self.X_test, self.y_test)
+        y_pred: np.ndarray = self.best_model.predict(self.X_test)
+        mse: MseType = mean_squared_error(self.y_test, y_pred)
+        r2: float = self.best_model.score(self.X_test, self.y_test)
 
         logging.info(f"모델: {self.best_model}")
         logging.info(f"평균 제곱 오차 (MSE): {mse:.2f}")
@@ -142,7 +135,7 @@ async def main() -> dict[str, np.ndarray | str]:
     await ensemble.train_models()
 
     X_new = X[:5]  # 예제로 처음 5개 데이터를 사용
-    result = await ensemble.predict(X_new)
+    result: MLModelScoreType = await ensemble.predict(X_new)
 
     return result
 

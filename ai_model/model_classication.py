@@ -1,6 +1,8 @@
 import logging
 import numpy as np
 import asyncio
+from typing import Coroutine, Any
+
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
@@ -29,16 +31,15 @@ class ClassificationEnsemble(AiModelCommonConstructionMixinClass):
         self.models: ClassificationModel = {
             "logistic_regression": Pipeline(
                 [("scaler", self.scaler), ("classifier", LogisticRegression())],
-                verbose=True
+                verbose=True,
             ),
             "knn": Pipeline(
                 [("scaler", self.scaler), ("classifier", KNeighborsClassifier())],
-                verbose=True
-
+                verbose=True,
             ),
             "decision_tree": Pipeline(
                 [("scaler", self.scaler), ("classifier", DecisionTreeClassifier())],
-                verbose=True
+                verbose=True,
             ),
         }
 
@@ -72,7 +73,7 @@ class ClassificationEnsemble(AiModelCommonConstructionMixinClass):
         세 가지 분류 모델을 비동기로 학습시키고 결과를 로깅하며, 학습된 모델을 저장함.
         """
 
-        tasks = [
+        tasks: list[Coroutine[Any, Pipeline]] = [
             self.train_model(
                 name=name,
                 model=model,
@@ -82,16 +83,16 @@ class ClassificationEnsemble(AiModelCommonConstructionMixinClass):
             for name, model in self.models.items()
         ]
         await asyncio.gather(*tasks)
-        
-        # 앙상블 학습 진행 
+
+        # 앙상블 학습 진행
         await self.train_model(
             name="voting",
             model=self.voting_model,
             scoring="accuracy",
         )
-        
-        # 가장 좋은 모델 
-        self.best_model = max(
+
+        # 가장 좋은 모델
+        self.best_model: str = max(
             self.trained_models,
             key=lambda name: accuracy_score(
                 self.y_test, self.trained_models[name].predict(self.X_test)
@@ -117,9 +118,9 @@ class ClassificationEnsemble(AiModelCommonConstructionMixinClass):
         predictions = self.trained_models[self.best_model].predict(X_new)
 
         # 성능 평가 및 로깅
-        y_pred = self.trained_models[self.best_model].predict(self.X_test)
-        cm = confusion_matrix(self.y_test, y_pred)
-        acc = accuracy_score(self.y_test, y_pred)
+        y_pred: np.ndarray = self.trained_models[self.best_model].predict(self.X_test)
+        cm: np.ndarray = confusion_matrix(self.y_test, y_pred)
+        acc: float = accuracy_score(self.y_test, y_pred)
 
         logging.info(f"모델: {self.best_model}")
         logging.info(f"혼동 행렬:\n{cm}")
@@ -136,17 +137,17 @@ class ClassificationEnsemble(AiModelCommonConstructionMixinClass):
 # 아이리스 데이터셋 로드
 from sklearn.datasets import load_iris
 
-iris = load_iris()
-X = iris.data
-y = iris.target
-
 
 # 비동기 작업 실행
 async def main() -> None:
+    iris = load_iris()
+    X = iris.data
+    y = iris.target
+
     ensemble = ClassificationEnsemble(X, y)
     await ensemble.train_models()
     X_new = X[:5]  # 예제로 처음 5개 데이터를 사용
-    result = await ensemble.predict(X_new)
+    result: MLModelScoreType = await ensemble.predict(X_new)
     return result
 
 
