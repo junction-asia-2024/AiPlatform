@@ -28,13 +28,17 @@ class ClassificationEnsemble(AiModelCommonConstructionMixinClass):
         # 최적의 파라미터 값을 찾기 위해서 Pipeline 설계 입니다
         self.models: ClassificationModel = {
             "logistic_regression": Pipeline(
-                [("scaler", self.scaler), ("classifier", LogisticRegression())]
+                [("scaler", self.scaler), ("classifier", LogisticRegression())],
+                verbose=True
             ),
             "knn": Pipeline(
-                [("scaler", self.scaler), ("classifier", KNeighborsClassifier())]
+                [("scaler", self.scaler), ("classifier", KNeighborsClassifier())],
+                verbose=True
+
             ),
             "decision_tree": Pipeline(
-                [("scaler", self.scaler), ("classifier", DecisionTreeClassifier())]
+                [("scaler", self.scaler), ("classifier", DecisionTreeClassifier())],
+                verbose=True
             ),
         }
 
@@ -78,11 +82,15 @@ class ClassificationEnsemble(AiModelCommonConstructionMixinClass):
             for name, model in self.models.items()
         ]
         await asyncio.gather(*tasks)
+        
+        # 앙상블 학습 진행 
         await self.train_model(
             name="voting",
             model=self.voting_model,
             scoring="accuracy",
         )
+        
+        # 가장 좋은 모델 
         self.best_model = max(
             self.trained_models,
             key=lambda name: accuracy_score(
@@ -137,7 +145,6 @@ y = iris.target
 async def main() -> None:
     ensemble = ClassificationEnsemble(X, y)
     await ensemble.train_models()
-    # await ensemble.train_ensemble_model()
     X_new = X[:5]  # 예제로 처음 5개 데이터를 사용
     result = await ensemble.predict(X_new)
     return result
