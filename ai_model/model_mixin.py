@@ -1,4 +1,5 @@
 import tracemalloc
+from typing import Any
 
 import numpy as np
 import logging
@@ -57,10 +58,10 @@ async def load_and_predict(model_path: str, input_data: np.ndarray) -> MLModelSc
     model = joblib.load(model_path)
 
     # 예측 수행
-    predictions = model.predict(input_data)
+    predictions: Any = model.predict(input_data)
 
     # 결과를 딕셔너리 형태로 반환
-    result = {
+    result: MLModelScoreType = {
         "prediction": predictions.tolist(),  # NumPy 배열을 리스트로 변환
         "model": f"{model_path.split('/')[1].split('_')[0]}",  # 모델 유형 (여기서는 예시로 'ensemble'로 설정)
     }
