@@ -65,7 +65,7 @@ class AiModelCommonConstructionMixinClass:
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
             X, y, test_size=0.2, random_state=42
         )
-        # self.scaler = StandardScaler()
+        self.scaler = StandardScaler()
         # self.X_train_std = self.scaler.fit_transform(X=self.X_train)
         # self.X_test_std = self.scaler.transform(X=self.X_test)
 
