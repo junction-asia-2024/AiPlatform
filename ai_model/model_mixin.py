@@ -81,6 +81,7 @@ class AiModelCommonConstructionMixinClass:
         self.type_ = type_
         self.trained_models: RegressionTrainedModels | ClassificationModel = {}
         self.best_model = None
+        self.best_model_name: str = None
         self.best_score: float = float("inf") if type_ == "regression" else 0.0
 
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
@@ -140,6 +141,7 @@ class AiModelCommonConstructionMixinClass:
         ):
             self.best_model = model
             self.best_score = score
+            self.best_model_name = name
 
         logging.info(f"모델: {name}")
         if self.type_ == "regression":

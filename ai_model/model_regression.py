@@ -3,7 +3,6 @@ import logging
 import asyncio
 from typing import Coroutine, Any
 
-from sklearn.datasets import load_diabetes
 from sklearn.linear_model import LinearRegression
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.neighbors import KNeighborsRegressor
@@ -12,9 +11,10 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import mean_squared_error
 
 from ai_typing import MLModelScoreType, RegressionTrainModel, ParameterGrids, MseType
-from model_mixin import AiModelCommonConstructionMixinClass, setup_logging
+from model_mixin import AiModelCommonConstructionMixinClass
+from data_utils import generate_data, setup_logging
 
-setup_logging("log/regression.log")
+setup_logging("log/ML/regression.log")
 
 
 class RegressionEnsemble(AiModelCommonConstructionMixinClass):
@@ -52,6 +52,7 @@ class RegressionEnsemble(AiModelCommonConstructionMixinClass):
                 "regressor__n_neighbors": self.n_neighbors,
                 "regressor__weights": self.knn_metric,
                 "regressor__metric": self.knn_distance,
+                "regressor__metric_params": self.knn_metric_param,
             },
         }
 
@@ -62,6 +63,7 @@ class RegressionEnsemble(AiModelCommonConstructionMixinClass):
                 ("dt", self.models["decision_tree"]),
                 ("knn", self.models["knn"]),
             ],
+            cv=5,
             final_estimator=LinearRegression(),
         )
 
@@ -87,35 +89,28 @@ class RegressionEnsemble(AiModelCommonConstructionMixinClass):
             scoring="neg_mean_squared_error",
         )
 
+    # 새로운 predict 메서드
     async def predict(self, X_new: np.ndarray) -> MLModelScoreType:
-        """
-        새로운 데이터에 대해 비동기로 예측 수행함.
-
-        Args:
-            X_new (np.ndarray): 예측할 새로운 데이터.
-
-        Returns:
-            MLModelScoreType: 예측 결과를 담은 딕셔너리.
-        """
         if not self.best_model:
             logging.warning("모델이 학습되지 않았습니다. 먼저 모델을 학습해주세요.")
             return {"prediction": [], "model": "None"}
 
-        logging.info(f"가장 베스트 모델은 --> {self.best_model} 입니다")
+        logging.info(
+            f"가장 베스트 모델은 --> {self.best_model_name} 입니다"
+        )  # 모델 이름 출력
         prediction = self.best_model.predict(X_new)
 
-        # 성능 평가 및 로깅
         y_pred: np.ndarray = self.best_model.predict(self.X_test)
         mse: MseType = mean_squared_error(self.y_test, y_pred)
-        r2: float = self.best_model.score(self.X_test, self.y_test)
+        r2: float = self.best_model.score(self.X_test_scaled, self.y_test)
 
-        logging.info(f"모델: {self.best_model}")
+        logging.info(f"모델: {self.best_model_name}")  # 모델 이름 출력
         logging.info(f"평균 제곱 오차 (MSE): {mse:.2f}")
         logging.info(f"결정 계수 (R^2): {r2:.2f}")
 
         result: MLModelScoreType = {
             "prediction": prediction.tolist(),
-            "model": type(self.best_model).__name__,
+            "model": self.best_model_name,  # 모델 이름 반환
         }
         return result
 
@@ -126,9 +121,8 @@ class RegressionEnsemble(AiModelCommonConstructionMixinClass):
 # 사용 예시
 async def main() -> dict[str, np.ndarray | str]:
     # 당뇨병 데이터셋 로드
-    diabetes = load_diabetes()
-    X = diabetes.data
-    y = diabetes.target
+    fin = generate_data(12000)
+    X, y = fin
 
     # 모델 생성 및 학습
     ensemble = RegressionEnsemble(X, y)
