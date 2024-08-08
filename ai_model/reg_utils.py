@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 from numpy.typing import NDArray
 from typing import Any
@@ -43,4 +44,23 @@ def generate_data(num_samples: int) -> tuple[np.ndarray, np.ndarray]:
     return data, loan_amount
 
 
-print(generate_data(1000))
+# 로깅 설정
+def setup_logging(log_file: str, log_level: int = logging.INFO) -> None:
+    """
+    Set up logging configuration.
+
+    Parameters:
+    log_file (str): The log file name.
+    log_level (int): The logging level.
+    """
+    log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(log_formatter)
+    file_handler.setLevel(log_level)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(log_formatter)
+    console_handler.setLevel(log_level)
+
+    logging.basicConfig(level=log_level, handlers=[file_handler, console_handler])

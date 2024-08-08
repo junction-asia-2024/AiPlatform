@@ -21,28 +21,6 @@ from ai_typing import (
 tracemalloc.start()
 
 
-# 로깅 설정
-def setup_logging(log_file: str, log_level: int = logging.INFO) -> None:
-    """
-    Set up logging configuration.
-
-    Parameters:
-    log_file (str): The log file name.
-    log_level (int): The logging level.
-    """
-    log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setFormatter(log_formatter)
-    file_handler.setLevel(log_level)
-
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(log_formatter)
-    console_handler.setLevel(log_level)
-
-    logging.basicConfig(level=log_level, handlers=[file_handler, console_handler])
-
-
 async def load_and_predict(model_path: str, input_data: np.ndarray) -> MLModelScoreType:
     """
     저장된 회귀 모델을 로드하고 예측을 수행하는 함수입니다.
@@ -88,6 +66,8 @@ class AiModelCommonConstructionMixinClass:
             X, y, test_size=0.2, random_state=42
         )
         self.scaler = StandardScaler()
+        self.X_train_std = self.scaler.fit_transform(X=self.X_train)
+        self.X_test_std = self.scaler.fit_transform(X=self.X_test)
 
         # decision parameter
         self.max_depth = [None, 10, 20, 30]
@@ -98,7 +78,7 @@ class AiModelCommonConstructionMixinClass:
         self.n_neighbors = [3, 5, 7, 9, 10]
         self.knn_metric = ["uniform", "distance"]
         self.knn_distance = ["euclidean", "manhattan"]
-        # self.knn_metric_param = [None, None, {"V": self.VI}]
+        self.knn_metric_param = [None, None, {"V": self.VI}]
 
     async def train_model(
         self,
@@ -117,20 +97,20 @@ class AiModelCommonConstructionMixinClass:
         """
         if param_grid:
             grid_search = GridSearchCV(
-                estimator=model, param_grid=param_grid, scoring=scoring, cv=5
+                estimator=model, param_grid=param_grid, scoring=scoring, cv=5, verbose=2
             )
 
-            grid_search.fit(self.X_train, self.y_train)
+            grid_search.fit(self.X_train_std, self.y_train)
             best_model = grid_search.best_estimator_
             logging.info(
                 f"{name} 모델의 최적 하이퍼파라미터: {grid_search.best_params_}"
             )
             model = best_model
         else:
-            model.fit(self.X_train, self.y_train)
+            model.fit(self.X_train_std, self.y_train)
 
         self.trained_models[name] = model
-        y_pred = model.predict(self.X_test)
+        y_pred = model.predict(self.X_test_std)
         if self.type_ == "regression":
             score: ModelPerformanceScore = mean_squared_error(self.y_test, y_pred)
         else:

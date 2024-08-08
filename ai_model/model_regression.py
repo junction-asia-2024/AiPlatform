@@ -3,6 +3,7 @@ import logging
 import asyncio
 from typing import Coroutine, Any
 
+from sklearn.datasets import load_diabetes
 from sklearn.linear_model import LinearRegression
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.neighbors import KNeighborsRegressor
@@ -12,7 +13,7 @@ from sklearn.metrics import mean_squared_error
 
 from ai_typing import MLModelScoreType, RegressionTrainModel, ParameterGrids, MseType
 from model_mixin import AiModelCommonConstructionMixinClass
-from data_utils import generate_data, setup_logging
+from reg_utils import generate_data, setup_logging
 
 setup_logging("log/ML/regression.log")
 
@@ -100,9 +101,9 @@ class RegressionEnsemble(AiModelCommonConstructionMixinClass):
         )  # 모델 이름 출력
         prediction = self.best_model.predict(X_new)
 
-        y_pred: np.ndarray = self.best_model.predict(self.X_test)
+        y_pred: np.ndarray = self.best_model.predict(self.X_test_std)
         mse: MseType = mean_squared_error(self.y_test, y_pred)
-        r2: float = self.best_model.score(self.X_test_scaled, self.y_test)
+        r2: float = self.best_model.score(self.X_test_std, self.y_test)
 
         logging.info(f"모델: {self.best_model_name}")  # 모델 이름 출력
         logging.info(f"평균 제곱 오차 (MSE): {mse:.2f}")
@@ -121,8 +122,9 @@ class RegressionEnsemble(AiModelCommonConstructionMixinClass):
 # 사용 예시
 async def main() -> dict[str, np.ndarray | str]:
     # 당뇨병 데이터셋 로드
-    fin = generate_data(12000)
-    X, y = fin
+    diabetes = load_diabetes()
+    X = diabetes.data
+    y = diabetes.target
 
     # 모델 생성 및 학습
     ensemble = RegressionEnsemble(X, y)
