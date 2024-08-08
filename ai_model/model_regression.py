@@ -1,7 +1,7 @@
 import numpy as np
 import logging
 import asyncio
-from typing import Coroutine, Any
+from typing import Coroutine, Any, Dict
 
 from sklearn.datasets import load_diabetes
 from sklearn.linear_model import LinearRegression
@@ -13,7 +13,7 @@ from sklearn.metrics import mean_squared_error
 
 from ai_typing import MLModelScoreType, RegressionTrainModel, ParameterGrids, MseType
 from model_mixin import AiModelCommonConstructionMixinClass
-from reg_utils import generate_data, setup_logging
+from reg_utils import setup_logging
 
 setup_logging("log/ML/regression.log")
 
@@ -28,7 +28,6 @@ class RegressionEnsemble(AiModelCommonConstructionMixinClass):
             y (np.ndarray): 타겟 데이터.
         """
         super().__init__(X, y, type_="regression")
-
         # 최적의 파라미터 값을 찾기 위해서 Pipeline 설계 입니다
         self.models: RegressionTrainModel = {
             "linear_regression": Pipeline(
@@ -53,7 +52,6 @@ class RegressionEnsemble(AiModelCommonConstructionMixinClass):
                 "regressor__n_neighbors": self.n_neighbors,
                 "regressor__weights": self.knn_metric,
                 "regressor__metric": self.knn_distance,
-                "regressor__metric_params": self.knn_metric_param,
             },
         }
 
@@ -96,22 +94,20 @@ class RegressionEnsemble(AiModelCommonConstructionMixinClass):
             logging.warning("모델이 학습되지 않았습니다. 먼저 모델을 학습해주세요.")
             return {"prediction": [], "model": "None"}
 
-        logging.info(
-            f"가장 베스트 모델은 --> {self.best_model_name} 입니다"
-        )  # 모델 이름 출력
+        logging.info(f"가장 베스트 모델은 --> {self.best_model_name} 입니다")
         prediction = self.best_model.predict(X_new)
 
         y_pred: np.ndarray = self.best_model.predict(self.X_test_std)
         mse: MseType = mean_squared_error(self.y_test, y_pred)
         r2: float = self.best_model.score(self.X_test_std, self.y_test)
 
-        logging.info(f"모델: {self.best_model_name}")  # 모델 이름 출력
+        logging.info(f"모델: {self.best_model_name}")
         logging.info(f"평균 제곱 오차 (MSE): {mse:.2f}")
         logging.info(f"결정 계수 (R^2): {r2:.2f}")
 
         result: MLModelScoreType = {
             "prediction": prediction.tolist(),
-            "model": self.best_model_name,  # 모델 이름 반환
+            "model": self.best_model_name,
         }
         return result
 
@@ -131,8 +127,9 @@ async def main() -> dict[str, np.ndarray | str]:
     await ensemble.train_models()
 
     X_new = X[:5]  # 예제로 처음 5개 데이터를 사용
-    result: MLModelScoreType = await ensemble.predict(X_new)
 
+    result: MLModelScoreType = await ensemble.predict(X_new)
+    logging.info(result)
     return result
 
 

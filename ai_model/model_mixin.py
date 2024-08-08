@@ -65,20 +65,17 @@ class AiModelCommonConstructionMixinClass:
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
             X, y, test_size=0.2, random_state=42
         )
-        self.scaler = StandardScaler()
-        self.X_train_std = self.scaler.fit_transform(X=self.X_train)
-        self.X_test_std = self.scaler.fit_transform(X=self.X_test)
+        # self.scaler = StandardScaler()
+        # self.X_train_std = self.scaler.fit_transform(X=self.X_train)
+        # self.X_test_std = self.scaler.transform(X=self.X_test)
 
         # decision parameter
         self.max_depth = [None, 10, 20, 30]
         self.min_sample_split = [2, 5, 10]
 
-        # KNN paramater and KNN Mahalanobis Distance Interactrion cal
-        self.VI = np.linalg.inv(np.cov(self.X_train.T))
         self.n_neighbors = [3, 5, 7, 9, 10]
         self.knn_metric = ["uniform", "distance"]
-        self.knn_distance = ["euclidean", "manhattan"]
-        self.knn_metric_param = [None, None, {"V": self.VI}]
+        self.knn_distance = ["minkowski", "euclidean", "manhattan"]
 
     async def train_model(
         self,
@@ -100,17 +97,17 @@ class AiModelCommonConstructionMixinClass:
                 estimator=model, param_grid=param_grid, scoring=scoring, cv=5, verbose=2
             )
 
-            grid_search.fit(self.X_train_std, self.y_train)
+            grid_search.fit(self.X_train, self.y_train)
             best_model = grid_search.best_estimator_
             logging.info(
                 f"{name} 모델의 최적 하이퍼파라미터: {grid_search.best_params_}"
             )
             model = best_model
         else:
-            model.fit(self.X_train_std, self.y_train)
+            model.fit(self.X_train, self.y_train)
 
         self.trained_models[name] = model
-        y_pred = model.predict(self.X_test_std)
+        y_pred = model.predict(self.X_test)
         if self.type_ == "regression":
             score: ModelPerformanceScore = mean_squared_error(self.y_test, y_pred)
         else:
